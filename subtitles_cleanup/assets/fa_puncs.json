@@ -1,0 +1,245 @@
+[
+  {
+    "name": "COMMA",
+    "clean": {
+      "space_before": false,
+      "space_after": true,
+      "is_token": true
+    },
+    "map": {
+      "punc_fa": {
+        "char": "،",
+        "name": "ARABIC COMMA"
+      },
+      "punc_ar": {
+        "char": "،",
+        "name": "ARABIC COMMA"
+      },
+      "punc_en": {
+        "char": ",",
+        "name": "COMMA"
+      }
+    },
+    "others": [
+      {
+        "char": "،",
+        "name": "ARABIC COMMA"
+      },
+      {
+        "char": ",",
+        "name": "COMMA"
+      },
+      {
+        "char": "՝",
+        "name": "ARMENIAN COMMA"
+      },
+      {
+        "char": "߸",
+        "name": "NKO COMMA"
+      },
+      {
+        "char": "፣",
+        "name": "ETHIOPIC COMMA"
+      },
+      {
+        "char": "᠂",
+        "name": "MONGOLIAN COMMA"
+      },
+      {
+        "char": "᠈",
+        "name": "MONGOLIAN MANCHU COMMA"
+      },
+      {
+        "char": "⸲",
+        "name": "TURNED COMMA"
+      },
+      {
+        "char": "⸴",
+        "name": "RAISED COMMA"
+      },
+      {
+        "char": "⹁",
+        "name": "REVERSED COMMA"
+      },
+      {
+        "char": "⹉",
+        "name": "DOUBLE STACKED COMMA"
+      },
+      {
+        "char": "⹌",
+        "name": "MEDIEVAL COMMA"
+      },
+      {
+        "char": "、",
+        "name": "IDEOGRAPHIC COMMA"
+      },
+      {
+        "char": "꓾",
+        "name": "LISU PUNCTUATION COMMA"
+      },
+      {
+        "char": "꘍",
+        "name": "VAI COMMA"
+      },
+      {
+        "char": "꛵",
+        "name": "BAMUM COMMA"
+      }
+    ]
+  },
+  {
+    "name": "FULL STOP",
+    "clean": {
+      "space_before": false,
+      "space_after": true,
+      "is_token": true
+    },
+    "map": {
+      "punc_fa": {
+        "char": ".",
+        "name": "FULL STOP"
+      },
+      "punc_ar": {
+        "char": ".",
+        "name": "FULL STOP"
+      },
+      "punc_en": {
+        "char": ".",
+        "name": "FULL STOP"
+      }
+    },
+    "others": [
+      {
+        "char": ".",
+        "name": "FULL STOP"
+      },
+      {
+        "char": "۔",
+        "name": "ARABIC FULL STOP"
+      },
+      {
+        "char": "։",
+        "name": "ARMENIAN FULL STOP"
+      },
+      {
+        "char": "܁",
+        "name": "SYRIAC SUPRALINEAR FULL STOP"
+      },
+      {
+        "char": "܂",
+        "name": "SYRIAC SUBLINEAR FULL STOP"
+      },
+      {
+        "char": "።",
+        "name": "ETHIOPIC FULL STOP"
+      },
+      {
+        "char": "᙮",
+        "name": "CANADIAN SYLLABICS FULL STOP"
+      },
+      {
+        "char": "᠃",
+        "name": "MONGOLIAN FULL STOP"
+      },
+      {
+        "char": "᠉",
+        "name": "MONGOLIAN MANCHU FULL STOP"
+      },
+      {
+        "char": "⸼",
+        "name": "STENOGRAPHIC FULL STOP"
+      },
+      {
+        "char": "。",
+        "name": "IDEOGRAPHIC FULL STOP"
+      },
+      {
+        "char": "꓿",
+        "name": "LISU PUNCTUATION FULL STOP"
+      },
+      {
+        "char": "꘎",
+        "name": "VAI FULL STOP"
+      },
+      {
+        "char": "꛳",
+        "name": "BAMUM FULL STOP"
+      }
+    ]
+  },
+  {
+    "name": "SEMICOLON",
+    "clean": {
+      "is_token": true,
+      "space_before": false,
+      "space_after": true
+    },
+    "map": {
+      "punc_fa": {
+        "char": "؛",
+        "name": "ARABIC SEMICOLON"
+      },
+      "punc_ar": {
+        "char": "؛",
+        "name": "ARABIC SEMICOLON"
+      },
+      "punc_en": {
+        "char": ";",
+        "name": "SEMICOLON"
+      }
+    },
+    "others": [
+      {
+        "char": "؛",
+        "name": "ARABIC SEMICOLON"
+      },
+      {
+        "char": ";",
+        "name": "SEMICOLON"
+      },
+      {
+        "char": "፤",
+        "name": "ETHIOPIC SEMICOLON"
+      },
+      {
+        "char": "⁏",
+        "name": "REVERSED SEMICOLON"
+      },
+      {
+        "char": "⍮",
+        "name": "APL FUNCTIONAL SYMBOL SEMICOLON UNDERBAR"
+      },
+      {
+        "char": "⸵",
+        "name": "TURNED SEMICOLON"
+      },
+      {
+        "char": "꛶",
+        "name": "BAMUM SEMICOLON"
+      }
+    ]
+  },
+  {
+    "name": "EXCLAMATION MARK",
+    "clean": {
+      "space_before": false,
+      "space_after": true
+    },
+    "map": {
+      "punc_fa": {
+        "char": "!",
+        "name": "EXCLAMATION MARK"
+      },
+      "punc_ar": {
+        "char": "!",
+        "name": "EXCLAMATION MARK"
+      },
+      "punc_en": {
+        "char": "!",
+        "name": "EXCLAMATION MARK"
+      }
+    },
+    "others": [
+    ]
+  }
+]
