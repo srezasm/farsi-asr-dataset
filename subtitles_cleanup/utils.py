@@ -15,7 +15,7 @@ class SingletonLogger:
             file_handler = logging.FileHandler('app.log')
             file_handler.setLevel(logging.INFO)
             console_handler = logging.StreamHandler()
-            console_handler.setLevel(logging.DEBUG)
+            console_handler.setLevel(logging.WARNING)
 
             # Define a common format
             formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(module)s:%(funcName)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')

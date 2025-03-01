@@ -1,9 +1,9 @@
 from sqlalchemy import create_engine, Column, Integer, Float, String, Enum as SQLEnum
+from sqlalchemy.sql import exists
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from contextlib import contextmanager
 from chunker import Caption
-import uuid
 from normalizer import ValidationStatus
 import logging
 
@@ -93,8 +93,11 @@ def delete_chunk(session: Session, chunk_id: int) -> None:
     session.commit()
 
 # Retrieve a chunk record by its id
-def get_chunk(session: Session, chunk_id: int) -> AudioChunk:
-    return session.query(AudioChunk).filter(AudioChunk.id == chunk_id).first()
+def chunk_exists(session: Session, source_id: str, source: str) -> AudioChunk:
+    return session.query(exists().where(
+        AudioChunk.source_id == source_id,
+        AudioChunk.source == source
+    )).scalar()
 
 # Context manager to handle session lifecycle
 @contextmanager
@@ -104,33 +107,3 @@ def get_db_session():
         yield session
     finally:
         session.close()
-
-# Example usage demonstrating create, update, retrieve, and delete operations
-if __name__ == "__main__":
-    init_db()  # Create the tables if they don't already exist
-
-    with get_db_session() as session:
-        # Create a new chunk
-        new_chunk = create_chunk(
-            session=session,
-            audio="chunk1.wav",
-            text="Sample text",
-            source="youtube",
-            source_id=uuid.uuid4(),
-            start=0.0,
-            end=5.0,
-            invalidation=ValidationStatus.VALID
-        )
-        print("Created chunk with id:", new_chunk.id)
-
-        # Update the chunk (e.g., change the text)
-        updated_chunk = update_chunk(session, new_chunk.id, text="Updated sample text")
-        print("Updated chunk text:", updated_chunk.text)
-
-        # Retrieve the chunk
-        retrieved_chunk = get_chunk(session, new_chunk.id)
-        print("Retrieved chunk:", retrieved_chunk)
-
-        # Delete the chunk
-        delete_chunk(session, new_chunk.id)
-        print("Deleted chunk with id:", new_chunk.id)

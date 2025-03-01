@@ -1,160 +1,206 @@
-from chunker import AudioChunker, Caption
-from db import create_chunks, init_db, get_db_session
-import webvtt
 import os
 import tarfile
 import shutil
 from huggingface_hub import HfApi
-from utils import SingletonLogger
-from tenacity import retry, stop_after_attempt, wait_exponential
+import webvtt
 
+from chunker import AudioChunker, Caption
+from db import create_chunks, init_db, get_db_session, chunk_exists
+from utils import SingletonLogger
+
+# Set up logging
 logger = SingletonLogger().get_logger()
 
 class FilesIterator:
     def __init__(self):
         self.api = HfApi()
         self.repo_id = 'farsi-asr/farsi-asr-dataset'
-        self.processed_repo_id = 'farsi-asr/farsi-youtube-asr-dataset'
-        self.tmp_dir = 'tmp'
+        self.target_repo_id = 'farsi-asr/farsi-youtube-asr-dataset'
         self.tar_files = self._get_tar_files()
     
     def _get_tar_files(self):
         try:
             tar_files = self.api.list_repo_files(self.repo_id, repo_type='dataset')
-            return [f for f in tar_files if f.startswith('youtube') and f.endswith('.tar.gz')]
+            tar_files = [f for f in tar_files if f.startswith('youtube') and f.endswith('.tar.gz')]
+            logger.info(f"Found {len(tar_files)} tar.gz files in repository {self.repo_id}.")
+            return tar_files
         except Exception as e:
-            logger.error(f"Error listing repo files: {e}")
+            logger.error(f"Error listing repository files: {e}")
             return []
+    
+    def _get_files(self):
+        # Base temporary directory for extraction
+        base_tmp_dir = '/content/tmp'
+        os.makedirs(base_tmp_dir, exist_ok=True)
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
-    def _download_tar(self, tar_file):
-        return self.api.hf_hub_download(
-            self.repo_id, tar_file, repo_type='dataset', local_dir=self.tmp_dir
-        )
-
-    def _process_tar(self, tar_file):
-        chl_id = os.path.basename(tar_file).split('.')[0]
-        extracted_dir = os.path.join(self.tmp_dir, chl_id)
-        
-        try:
-            tar_path = self._download_tar(tar_file)
-            with tarfile.open(tar_path, 'r:gz') as tar:
-                tar.extractall(self.tmp_dir)
+        for tar_file in self.tar_files:
+            logger.info(f"Processing tar file: {tar_file}")
             
+            # Create a unique temporary directory for this tar file
+            tmp_dir = os.path.join(base_tmp_dir, os.path.basename(tar_file).replace('.tar.gz', ''))
+            os.makedirs(tmp_dir, exist_ok=True)
+            
+            try:
+                # Download the tar file
+                tar_path = self.api.hf_hub_download(
+                    self.repo_id, tar_file, repo_type='dataset', local_dir=tmp_dir
+                )
+                logger.info(f"Downloaded {tar_file} to {tar_path}")
+            except Exception as e:
+                logger.error(f"Error downloading {tar_file}: {e}")
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+                continue
+
+            try:
+                # Extract the tar file into tmp_dir
+                with tarfile.open(tar_path, 'r:gz') as tar:
+                    tar.extractall(tmp_dir)
+                logger.info(f"Extracted {tar_file} into {tmp_dir}")
+            except Exception as e:
+                logger.error(f"Error extracting {tar_file}: {e}")
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+                continue
+
+            # Determine the expected directory (using the first part of tar_file's name)
+            chl_id = os.path.basename(tar_file).split('_')[0]
+            extracted_dir = os.path.join(tmp_dir, chl_id)
+            if not os.path.isdir(extracted_dir):
+                logger.warning(f"Expected directory {extracted_dir} not found. Skipping {tar_file}.")
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+                continue
+
+            found_files = False
+            # Walk through the extracted directory to find .vtt and .opus files
             for root, _, files in os.walk(extracted_dir):
-                sub_files = [f for f in files if f.endswith('.vtt')]
-                audio_files = [f for f in files if f.endswith('.opus')]
-                
+                sub_files = [os.path.join(root, f) for f in files if f.endswith('.vtt')]
+                audio_files = [os.path.join(root, f) for f in files if f.endswith('.opus')]
                 if not sub_files or not audio_files:
                     missing = []
-                    if not sub_files: missing.append('subtitles')
-                    if not audio_files: missing.append('audio')
-                    logger.warning(f"Missing {', '.join(missing)} in {root}")
+                    if not sub_files:
+                        missing.append("subtitles (.vtt)")
+                    if not audio_files:
+                        missing.append("audio (.opus)")
+                    logger.warning(f"Missing {', '.join(missing)} in {root}. Skipping this directory.")
                     continue
-                
-                yield (
-                    os.path.join(root, sub_files[0]),
-                    os.path.join(root, audio_files[0]),
-                    chl_id
-                )
-            
-            yield None  # Signal end of processing for this tar
-            
-            self._create_and_upload_tar(chl_id, tar_file)
-            
-        except Exception as e:
-            logger.error(f"Error processing {tar_file}: {e}")
-        finally:
-            shutil.rmtree(extracted_dir, ignore_errors=True)
-            shutil.rmtree(chl_id, ignore_errors=True)
+                found_files = True
+                yield sub_files[0], audio_files[0], chl_id
 
-    def _create_and_upload_tar(self, chl_id, original_tar_name):
-        new_tar_name = original_tar_name
-        new_tar_path = os.path.join(os.getcwd(), new_tar_name)
-        
-        if not os.path.exists(chl_id) or not os.listdir(chl_id):
-            logger.warning(f"No processed files found for {chl_id}")
-            return
+            if not found_files:
+                logger.warning(f"No valid file pairs found in {extracted_dir} for {tar_file}.")
 
-        try:
-            with tarfile.open(new_tar_path, 'w:gz') as tar:
-                tar.add(chl_id, arcname=chl_id)
-            logger.info(f"Created processed tar: {new_tar_path}")
+            # Archive processed output directory
+            # Here we assume that processing (chunking) writes output under a directory named after 'chl_id'
+            output_dir = os.path.join(os.getcwd(), chl_id)
+            if os.path.isdir(output_dir):
+                try:
+                    archive_path = os.path.join(os.getcwd(), f"{chl_id}.tar.gz")
+                    with tarfile.open(archive_path, 'w:gz') as tar_archive:
+                        for root, _, files in os.walk(output_dir):
+                            for f in files:
+                                file_path = os.path.join(root, f)
+                                arcname = os.path.relpath(file_path, os.getcwd())
+                                tar_archive.add(file_path, arcname=arcname)
+                    logger.info(f"Created archive {archive_path} from {output_dir}")
 
-            self.api.upload_file(
-                path_or_fileobj=new_tar_path,
-                path_in_repo=new_tar_name,
-                repo_id=self.processed_repo_id,
-                repo_type='dataset'
-            )
-            logger.info(f"Uploaded {new_tar_name} successfully")
-        except Exception as e:
-            logger.error(f"Failed to process {new_tar_name}: {e}")
-        finally:
-            if os.path.exists(new_tar_path):
-                os.remove(new_tar_path)
+                    self.api.upload_file(
+                        path_or_fileobj=archive_path,
+                        path_in_repo=os.path.basename(archive_path),
+                        repo_id=self.target_repo_id,
+                        repo_type='dataset'
+                    )
+                    logger.info(f"Uploaded archive {archive_path} to repository {self.target_repo_id}")
+
+                    # Optionally remove the output directory after archiving
+                    shutil.rmtree(output_dir, ignore_errors=True)
+                except Exception as e:
+                    logger.error(f"Error archiving/uploading processed files from {output_dir}: {e}")
+            else:
+                logger.info(f"No output directory {output_dir} found to archive for {tar_file}.")
+
+            # Clean up the temporary extraction directory
+            try:
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+                logger.info(f"Cleaned up temporary directory {tmp_dir}")
+            except Exception as e:
+                logger.error(f"Error cleaning up temporary directory {tmp_dir}: {e}")
 
     def __iter__(self):
-        for tar_file in self.tar_files:
-            logger.info(f"Processing archive: {tar_file}")
-            yield from self._process_tar(tar_file)
+        return self._get_files()
+
 
 def get_captions(sub_filepath):
+    captions = []
     try:
-        sub = webvtt.read(sub_filepath)
+        vtt_captions = webvtt.read(sub_filepath)
     except Exception as e:
-        logger.error(f"Error reading {sub_filepath}: {e}")
+        logger.error(f"Error reading subtitles from {sub_filepath}: {e}")
         return []
 
-    def format_time(t): return t.hours * 3600 + t.minutes * 60 + t.seconds + t.milliseconds / 1000
+    def time_to_seconds(time_str):
+        try:
+            h, m, s = time_str.split(':')
+            return int(h) * 3600 + int(m) * 60 + float(s)
+        except Exception as e:
+            logger.error(f"Error converting time string '{time_str}': {e}")
+            return 0
 
-    return [
-        Caption(
-            start=format_time(caption.start_time),
-            end=format_time(caption.end_time),
-            text=caption.text.strip()
-        )
-        for caption in sub.iter_slice()
-    ]
+    for caption in vtt_captions:
+        try:
+            start_time = time_to_seconds(caption.start)
+            end_time = time_to_seconds(caption.end)
+            captions.append(
+                Caption(
+                    start=start_time,
+                    end=end_time,
+                    text=caption.text.strip()
+                )
+            )
+        except Exception as e:
+            logger.error(f"Error processing caption in {sub_filepath}: {e}")
+            continue
 
-def process_video(chunker, sub_filepath, audio_filepath, chl_id, session):
-    vid_id = os.path.basename(sub_filepath).split('.')[0]
-    dir_path = os.path.join(chl_id, vid_id)
-    
-    try:
-        os.makedirs(dir_path, exist_ok=True)
-        logger.debug(f"Processing video {vid_id}")
+    return captions
 
-        captions = get_captions(sub_filepath)
-        if not captions:
-            logger.warning(f"No captions found for {vid_id}")
-            return
-
-        processed = chunker.chunk(
-            merge=True,
-            audio_file=audio_filepath,
-            captions=captions,
-            output_dir=dir_path
-        )
-
-        create_chunks(session, 'youtube', vid_id, processed)
-        session.commit()
-    except Exception as e:
-        logger.error(f"Failed to process {vid_id}: {e}")
-        session.rollback()
-        shutil.rmtree(dir_path, ignore_errors=True)
-    finally:
-        if os.path.exists(dir_path) and not os.listdir(dir_path):
-            shutil.rmtree(dir_path)
 
 if __name__ == "__main__":
+    logger.info("Initializing database...")
     init_db()
+
     chunker = AudioChunker()
     video_iter = FilesIterator()
 
     with get_db_session() as session:
-        for item in video_iter:
-            if item is None:  # Signals end of a tar processing
+        for sub_filepath, audio_filepath, chl_id in video_iter:
+            try:
+                vid_id = os.path.basename(sub_filepath).split('.')[0]
+                logger.info(f"Processing video ID: {vid_id}")
+
+                if chunk_exists(session, vid_id, 'youtube'):
+                    logger.info(f"Video {vid_id} already processed. Skipping.")
+                    continue
+
+                # Create an output directory for the chunked audio
+                output_dir = os.path.join(chl_id, vid_id)
+                os.makedirs(output_dir, exist_ok=True)
+
+                captions = get_captions(sub_filepath)
+                if not captions:
+                    logger.warning(f"No captions extracted from {sub_filepath}. Skipping video {vid_id}.")
+                    continue
+
+                # Process audio chunking
+                processed_captions = chunker.chunk(
+                    merge=True,
+                    audio_file=audio_filepath,
+                    captions=captions,
+                    output_dir=output_dir
+                )
+                logger.info(f"Created {len(processed_captions)} audio chunks for video {vid_id}")
+
+                # Record processed chunks in the database
+                create_chunks(session, 'youtube', vid_id, processed_captions)
+            except Exception as e:
+                logger.error(f"Error processing video {sub_filepath}: {e}")
                 continue
-            sub_filepath, audio_filepath, chl_id = item
-            process_video(chunker, sub_filepath, audio_filepath, chl_id, session)
+
+    logger.info("Processing complete.")
