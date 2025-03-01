@@ -3,6 +3,7 @@ import tarfile
 import shutil
 from huggingface_hub import HfApi
 import webvtt
+from os.path import join, basename, isdir, relpath
 
 from chunker import AudioChunker, Caption
 from db import create_chunks, init_db, get_db_session, chunk_exists
@@ -11,16 +12,17 @@ from utils import SingletonLogger
 # Set up logging
 logger = SingletonLogger().get_logger()
 
+hf_api = HfApi()
+
 class FilesIterator:
     def __init__(self):
-        self.api = HfApi()
         self.repo_id = 'farsi-asr/farsi-asr-dataset'
         self.target_repo_id = 'farsi-asr/farsi-youtube-asr-dataset'
         self.tar_files = self._get_tar_files()
     
     def _get_tar_files(self):
         try:
-            tar_files = self.api.list_repo_files(self.repo_id, repo_type='dataset')
+            tar_files = hf_api.list_repo_files(self.repo_id, repo_type='dataset')
             tar_files = [f for f in tar_files if f.startswith('youtube') and f.endswith('.tar.gz')]
             logger.info(f"Found {len(tar_files)} tar.gz files in repository {self.repo_id}.")
             return tar_files
@@ -37,12 +39,12 @@ class FilesIterator:
             logger.info(f"Processing tar file: {tar_file}")
 
             # Create a unique temporary directory for this tar file
-            tmp_dir = os.path.join(base_tmp_dir, os.path.basename(tar_file).replace('.tar.gz', ''))
+            tmp_dir = join(base_tmp_dir, basename(tar_file).replace('.tar.gz', ''))
             os.makedirs(tmp_dir, exist_ok=True)
             
             try:
                 # Download the tar file
-                tar_path = self.api.hf_hub_download(
+                tar_path = hf_api.hf_hub_download(
                     self.repo_id, tar_file, repo_type='dataset', local_dir=tmp_dir
                 )
                 logger.info(f"Downloaded {tar_file} to {tar_path}")
@@ -62,9 +64,10 @@ class FilesIterator:
                 continue
 
             # Determine the expected directory (using the first part of tar_file's name)
-            chl_id = os.path.basename(tar_file).split('.')[0]
-            extracted_dir = os.path.join(tmp_dir, chl_id)
-            if not os.path.isdir(extracted_dir):
+            tar_chunk_name = basename(tar_file).split('.')[0]
+            chl_id = '_'.join(basename(tar_file).split('_')[:-1])
+            extracted_dir = join(tmp_dir, chl_id)
+            if not isdir(extracted_dir):
                 logger.warning(f"Expected directory {extracted_dir} not found. Skipping {tar_file}.")
                 shutil.rmtree(tmp_dir, ignore_errors=True)
                 continue
@@ -72,8 +75,8 @@ class FilesIterator:
             found_files = False
             # Walk through the extracted directory to find .vtt and .opus files
             for root, _, files in os.walk(extracted_dir):
-                sub_files = [os.path.join(root, f) for f in files if f.endswith('.vtt')]
-                audio_files = [os.path.join(root, f) for f in files if f.endswith('.opus')]
+                sub_files = [join(root, f) for f in files if f.endswith('.vtt')]
+                audio_files = [join(root, f) for f in files if f.endswith('.opus')]
                 
                 if not sub_files or not audio_files:
                     missing = []
@@ -85,28 +88,28 @@ class FilesIterator:
                     continue
                 
                 found_files = True
-                yield sub_files[0], audio_files[0], chl_id
+                yield sub_files[0], audio_files[0], tar_chunk_name
 
             if not found_files:
                 logger.warning(f"No valid file pairs found in {extracted_dir} for {tar_file}.")
 
             # Archive processed output directory
             # Here we assume that processing (chunking) writes output under a directory named after 'chl_id'
-            output_dir = os.path.join(os.getcwd(), chl_id)
-            if os.path.isdir(output_dir):
+            output_dir = join(os.getcwd(), tar_chunk_name)
+            if isdir(output_dir):
                 try:
-                    archive_path = os.path.join(os.getcwd(), f"{chl_id}.tar.gz")
+                    archive_path = join(os.getcwd(), f"{tar_chunk_name}.tar.gz")
                     with tarfile.open(archive_path, 'w:gz') as tar_archive:
                         for root, _, files in os.walk(output_dir):
                             for f in files:
-                                file_path = os.path.join(root, f)
-                                arcname = os.path.relpath(file_path, os.getcwd())
+                                file_path = join(root, f)
+                                arcname = relpath(file_path, os.getcwd())
                                 tar_archive.add(file_path, arcname=arcname)
                     logger.info(f"Created archive {archive_path} from {output_dir}")
 
-                    self.api.upload_file(
+                    hf_api.upload_file(
                         path_or_fileobj=archive_path,
-                        path_in_repo=os.path.basename(archive_path),
+                        path_in_repo=basename(archive_path),
                         repo_id=self.target_repo_id,
                         repo_type='dataset'
                     )
@@ -174,7 +177,7 @@ if __name__ == "__main__":
     with get_db_session() as session:
         for sub_filepath, audio_filepath, chl_id in video_iter:
             try:
-                vid_id = os.path.basename(sub_filepath).split('.')[0]
+                vid_id = basename(sub_filepath).split('.')[0]
                 logger.info(f"Processing video ID: {vid_id}")
 
                 if chunk_exists(session, vid_id, 'youtube'):
@@ -182,7 +185,7 @@ if __name__ == "__main__":
                     continue
 
                 # Create an output directory for the chunked audio
-                output_dir = os.path.join(chl_id, vid_id)
+                output_dir = join(chl_id, vid_id)
                 os.makedirs(output_dir, exist_ok=True)
 
                 captions = get_captions(sub_filepath)
@@ -201,6 +204,13 @@ if __name__ == "__main__":
 
                 # Record processed chunks in the database
                 create_chunks(session, 'youtube', vid_id, processed_captions)
+
+                hf_api.upload_file(
+                    path_or_fileobj=archive_path,
+                    path_in_repo=basename(archive_path),
+                    repo_id=self.target_repo_id,
+                    repo_type='dataset'
+                )
             except Exception as e:
                 logger.error(f"Error processing video {sub_filepath}: {e}")
                 continue
