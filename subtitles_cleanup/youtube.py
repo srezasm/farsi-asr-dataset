@@ -62,7 +62,6 @@ class FilesIterator:
                 continue
 
             # Determine the expected directory (using the first part of tar_file's name)
-            tar_chunk_name = basename(tar_file).split('.')[0]
             chl_id = '_'.join(basename(tar_file).split('_')[:-1])
             extracted_dir = join(tmp_dir, chl_id)
             if not isdir(extracted_dir):
@@ -86,50 +85,48 @@ class FilesIterator:
                     continue
                 
                 found_files = True
-                yield sub_files[0], audio_files[0], tar_chunk_name
+                yield sub_files[0], audio_files[0], chl_id
 
             if not found_files:
                 logger.warning(f"No valid file pairs found in {extracted_dir} for {tar_file}.")
 
-            self._upload_and_clean_up(tar_file, tmp_dir, tar_chunk_name)
+            # Archive the processed files and upload to the target repository
+            output_dir = join(os.getcwd(), chl_id)
+            if isdir(output_dir):
+                try:
+                    archive_path = basename(tar_path)
+                    with tarfile.open(archive_path, 'w:gz') as tar_archive:
+                        for root, _, files in os.walk(output_dir):
+                            for f in files:
+                                file_path = join(root, f)
+                                arcname = relpath(file_path, os.getcwd())
+                                tar_archive.add(file_path, arcname=arcname)
+                    logger.info(f"Created archive {archive_path} from {output_dir}")
 
-    def _upload_and_clean_up(self, tar_file, tmp_dir, tar_chunk_name):
-        # Archive processed output directory
-        output_dir = join(os.getcwd(), tar_chunk_name)
-        if isdir(output_dir):
-            try:
-                archive_path = join(os.getcwd(), f"{tar_chunk_name}.tar.gz")
-                with tarfile.open(archive_path, 'w:gz') as tar_archive:
-                    for root, _, files in os.walk(output_dir):
-                        for f in files:
-                            file_path = join(root, f)
-                            arcname = relpath(file_path, os.getcwd())
-                            tar_archive.add(file_path, arcname=arcname)
-                logger.info(f"Created archive {archive_path} from {output_dir}")
-
-                hf_api.upload_file(
-                        path_or_fileobj=archive_path,
-                        path_in_repo=basename(archive_path),
-                        repo_id=self.target_repo_id,
-                        repo_type='dataset'
-                    )
-                logger.info(f"Uploaded archive {archive_path} to repository {self.target_repo_id}")
+                    hf_api.upload_file(
+                            path_or_fileobj=archive_path,
+                            path_in_repo=basename(archive_path),
+                            repo_id=self.target_repo_id,
+                            repo_type='dataset'
+                        )
+                    logger.info(f"Uploaded archive {archive_path} to repository {self.target_repo_id}")
 
                     # Remove the output directory after archiving
-                shutil.rmtree(output_dir, ignore_errors=True)
-            except Exception as e:
-                logger.error(f"Error archiving/uploading processed files from {output_dir}: {e}")
-        else:
-            logger.info(f"No output directory {output_dir} found to archive for {tar_file}.")
-
+                    shutil.rmtree(output_dir, ignore_errors=True)
+                    os.remove(archive_path)
+                except Exception as e:
+                    logger.error(f"Error archiving/uploading processed files from {output_dir}: {e}")
+            else:
+                logger.info(f"No output directory {output_dir} found to archive for {tar_file}.")
+            
             # Clean up the temporary extraction directory
-        try:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-            logger.info(f"Cleaned up temporary directory {tmp_dir}")
-        except Exception as e:
-            logger.error(f"Error cleaning up temporary directory {tmp_dir}: {e}")
-        finally:
-            yield None, None, None
+            try:
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+                logger.info(f"Cleaned up temporary directory {tmp_dir}")
+            except Exception as e:
+                logger.error(f"Error cleaning up temporary directory {tmp_dir}: {e}")
+            finally:
+                yield None, None, None
 
     def __iter__(self):
         return self._get_files()
