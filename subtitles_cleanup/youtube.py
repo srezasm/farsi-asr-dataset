@@ -35,7 +35,7 @@ class FilesIterator:
 
         for tar_file in self.tar_files:
             logger.info(f"Processing tar file: {tar_file}")
-            
+
             # Create a unique temporary directory for this tar file
             tmp_dir = os.path.join(base_tmp_dir, os.path.basename(tar_file).replace('.tar.gz', ''))
             os.makedirs(tmp_dir, exist_ok=True)
@@ -62,7 +62,7 @@ class FilesIterator:
                 continue
 
             # Determine the expected directory (using the first part of tar_file's name)
-            chl_id = os.path.basename(tar_file).split('_')[0]
+            chl_id = os.path.basename(tar_file).split('.')[0]
             extracted_dir = os.path.join(tmp_dir, chl_id)
             if not os.path.isdir(extracted_dir):
                 logger.warning(f"Expected directory {extracted_dir} not found. Skipping {tar_file}.")
@@ -74,6 +74,7 @@ class FilesIterator:
             for root, _, files in os.walk(extracted_dir):
                 sub_files = [os.path.join(root, f) for f in files if f.endswith('.vtt')]
                 audio_files = [os.path.join(root, f) for f in files if f.endswith('.opus')]
+                
                 if not sub_files or not audio_files:
                     missing = []
                     if not sub_files:
@@ -82,6 +83,7 @@ class FilesIterator:
                         missing.append("audio (.opus)")
                     logger.warning(f"Missing {', '.join(missing)} in {root}. Skipping this directory.")
                     continue
+                
                 found_files = True
                 yield sub_files[0], audio_files[0], chl_id
 
@@ -110,7 +112,7 @@ class FilesIterator:
                     )
                     logger.info(f"Uploaded archive {archive_path} to repository {self.target_repo_id}")
 
-                    # Optionally remove the output directory after archiving
+                    # Remove the output directory after archiving
                     shutil.rmtree(output_dir, ignore_errors=True)
                 except Exception as e:
                     logger.error(f"Error archiving/uploading processed files from {output_dir}: {e}")
