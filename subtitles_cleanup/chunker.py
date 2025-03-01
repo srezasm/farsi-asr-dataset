@@ -1,9 +1,11 @@
 import os
-from pydub import AudioSegment
 from dataclasses import dataclass
 from typing import Optional, List
 from normalizer import ValidationStatus, TextNormalizer
+import subprocess
+from utils import SingletonLogger
 
+logger = SingletonLogger().get_logger()
 
 @dataclass
 class Caption:
@@ -51,7 +53,7 @@ class AudioChunker:
         for caption in captions[1:]:
             # Merge if within range
             if current_caption.end + CAPTION_OVERLAP_THRESHOLD >= caption.start and\
-                  current_caption.status == caption.status:
+                    current_caption.status == caption.status:
                 if caption.end - current_caption.start >= MAX_CHUNK_DURATION:
                     merged_captions.append(current_caption)
                     current_caption = caption.copy()
@@ -64,7 +66,7 @@ class AudioChunker:
         merged_captions.append(current_caption)
         return merged_captions
 
-    def _adjust_start_end(self, captions: List[Caption], length: float) -> List[Caption]:
+    def _adjust_start_end(self, captions: List[Caption], duration: float) -> List[Caption]:
         """
         Adjusts the start and end times of captions to ensure they do not
         overlap and fit within the given audio length.
@@ -89,35 +91,78 @@ class AudioChunker:
             adjusted[0].start = 0
 
         # Ensure the last caption does not extend beyond audio length
-        if adjusted[-1].end > length:
-            adjusted[-1].end = length
+        if adjusted[-1].end > duration:
+            adjusted[-1].end = duration
 
         return adjusted
+
+    def _slice_audio(self, audio_file: str, start: float, end: float, output_file: str):
+        """
+        Slices the audio file from start to end and writes the output to the
+        given file.
+        """
+        cmd = [
+            'ffmpeg',
+            '-y',
+            '-ss', str(start),
+            '-i', audio_file,
+            '-t', str(end - start),
+            '-c', 'copy',
+            output_file
+        ]
+        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    def _get_audio_duration(self, audio_file: str) -> float:
+        """
+        Returns the duration of the audio file in seconds.
+        """
+        cmd = [
+            'ffprobe',
+            '-i', audio_file,
+            '-show_entries',
+            'format=duration',
+            '-v',
+            'quiet',
+            '-of',
+            'csv=p=0'
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        return float(result.stdout.strip())
 
     def chunk(self, merge: bool, audio_file: str, captions: List[Caption], output_dir: str) -> tuple[List[Caption], List[Caption]]:
         """
         Slices the audio file according to the given captions and writes the
         audio chunks to the output directory. If merge is True, captions will be merged.
         """
-        # Ensure captions are sorted by start time
-        captions.sort(key=lambda c: c.start)
+        try:
+            # Ensure captions are sorted by start time
+            captions.sort(key=lambda c: c.start)
 
-        captions = self._filter_captions(captions)
+            captions = self._filter_captions(captions)
 
-        if merge:
-            captions = self._merge(captions)
+            if merge:
+                captions = self._merge(captions)
 
-        audio = AudioSegment.from_file(audio_file)
+            # Convert audio length to seconds for consistency
+            captions = self._adjust_start_end(
+                captions,
+                self._get_audio_duration(audio_file)
+            )
 
-        # Convert audio length to seconds for consistency
-        captions = self._adjust_start_end(captions, len(audio) / 1000)
+            for i, cap in enumerate(captions):
+                filename = f'{os.path.basename(audio_file).split(".")[0]}_{i+1:04d}.opus'
 
-        for i, cap in enumerate(captions):
-            filename = f'{os.path.basename(audio_file).split(".")[0]}_{i+1:04d}.wav'
+                self._slice_audio(
+                    audio_file,
+                    cap.start,
+                    cap.end,
+                    os.path.join(output_dir, filename)
+                )
 
-            sliced_aud = audio[cap.start*1000: cap.end*1000]
-            sliced_aud.export(os.path.join(output_dir, filename), format='wav')
+                cap.filename = filename
 
-            cap.filename = filename
-
-        return captions
+            return captions
+        
+        except Exception as e:
+            logger.error(f'Failed to chunk audio "{audio_file}", Error message: {e}')
+            return []

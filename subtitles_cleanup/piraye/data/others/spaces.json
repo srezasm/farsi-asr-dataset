@@ -1,0 +1,280 @@
+[
+  {
+    "name": "SPACE",
+    "clean": {
+      "space_priority": 2
+    },
+    "map": {
+      "space_delete": {
+        "char": "",
+        "name": "EMPTY CHARACTER"
+      },
+      "space_normal": {
+        "char": " ",
+        "name": "SPACE"
+      },
+      "space_keep": {
+        "char": " ",
+        "name": "SPACE"
+      }
+    },
+    "others": [
+      {
+        "char": " ",
+        "name": "SPACE"
+      },
+      {
+        "char": " ",
+        "name": "NO-BREAK SPACE"
+      },
+      {
+        "char": " ",
+        "name": "OGHAM SPACE MARK"
+      },
+      {
+        "char": " ",
+        "name": "EN SPACE"
+      },
+      {
+        "char": " ",
+        "name": "EM SPACE"
+      },
+      {
+        "char": " ",
+        "name": "THREE-PER-EM SPACE"
+      },
+      {
+        "char": " ",
+        "name": "FOUR-PER-EM SPACE"
+      },
+      {
+        "char": " ",
+        "name": "SIX-PER-EM SPACE"
+      },
+      {
+        "char": " ",
+        "name": "FIGURE SPACE"
+      },
+      {
+        "char": " ",
+        "name": "PUNCTUATION SPACE"
+      },
+      {
+        "char": " ",
+        "name": "THIN SPACE"
+      },
+      {
+        "char": " ",
+        "name": "HAIR SPACE"
+      },
+      {
+        "char": " ",
+        "name": "NARROW NO-BREAK SPACE"
+      },
+      {
+        "char": " ",
+        "name": "MEDIUM MATHEMATICAL SPACE"
+      },
+      {
+        "char": "␠",
+        "name": "SYMBOL FOR SPACE"
+      },
+      {
+        "char": "　",
+        "name": "IDEOGRAPHIC SPACE"
+      },
+      {
+        "char": "〿",
+        "name": "IDEOGRAPHIC HALF FILL SPACE"
+      },
+      {
+        "char": "\u180E",
+        "name": "MONGOLIAN VOWEL SEPARATOR"
+      },
+      {
+        "char": "\u2000",
+        "name": "EN QUAD"
+      },
+      {
+        "char": "\u2001",
+        "name": "EM QUAD"
+      }
+    ]
+  },
+  {
+    "name": "ZERO WIDTH SPACE",
+    "clean": {
+      "space_priority": 4
+    },
+    "map": {
+      "space_delete": {
+        "char": "",
+        "name": "Space"
+      },
+      "space_normal": {
+        "char": " ",
+        "name": "SPACE"
+      },
+      "space_keep": {
+        "char": "​",
+        "name": "ZERO WIDTH SPACE"
+      }
+    },
+    "others": [
+      {
+        "char": "​",
+        "name": "ZERO WIDTH SPACE"
+      }
+    ]
+  },
+  {
+    "name": "TAB",
+    "clean": {
+      "space_priority": 3
+    },
+    "map": {
+      "space_delete": {
+        "char": "",
+        "name": "EMPTY CHARACTER"
+      },
+      "space_keep": {
+        "char": "\t",
+        "name": "TAB"
+      },
+      "space_normal": {
+        "char": " ",
+        "name": "SPACE"
+      }
+    },
+    "others": [
+      {
+        "char": "\t",
+        "name": "TAB"
+      }
+    ]
+  },
+  {
+    "name": "NEW LINE",
+    "clean": {
+      "space_priority": 1
+    },
+    "map": {
+      "space_delete": {
+        "char": "",
+        "name": "EMPTY CHARACTER"
+      },
+      "space_normal": {
+        "char": "\n",
+        "name": "NEW LINE"
+      },
+      "space_keep": {
+        "char": "\n",
+        "name": "NEW LINE"
+      }
+    },
+    "others": [
+      {
+        "char": "\n",
+        "name": "NEW LINE"
+      },
+      {
+        "char": "\u000B",
+        "name": "VERTICAL TABULATION"
+      },
+      {
+        "char": "\u000C",
+        "name": "FORM FEED"
+      },
+      {
+        "char": "\u0085",
+        "name": "NEXT LINE"
+      },
+      {
+        "char": "\u2028",
+        "name": "LINE SEPARATOR"
+      },
+      {
+        "char": "\u2029",
+        "name": "PARAGRAPH SEPARATOR"
+      }
+    ]
+  },
+  {
+    "name": "CARRIAGE RETURN",
+    "clean": {
+      "space_priority": 4
+    },
+    "map": {
+      "space_delete": {
+        "char": "",
+        "name": "EMPTY CHARACTER"
+      },
+      "space_keep": {
+        "char": "\r",
+        "name": "CARRIAGE RETURN"
+      },
+      "space_normal": {
+        "char": " ",
+        "name": "SPACE"
+      }
+    },
+    "others": [
+      {
+        "char": "\r",
+        "name": "CARRIAGE RETURN"
+      }
+    ]
+  },
+  {
+    "name": "ZERO WIDTH NON-JOINER",
+    "clean": {
+      "space_priority": 4
+    },
+    "map": {
+      "space_delete": {
+        "char": "",
+        "name": "EMPTY CHARACTER"
+      },
+      "space_keep": {
+        "char": "\u200C",
+        "name": "ZERO WIDTH NON-JOINER"
+      },
+      "space_normal": {
+        "char": " ",
+        "name": "SPACE"
+      }
+    },
+    "others": [
+      {
+        "char": "\u200C",
+        "name": "ZERO WIDTH NON-JOINER"
+      }
+    ]
+  },
+  {
+    "name": "ZERO WIDTH JOINER",
+    "clean": {
+      "space_priority": 4
+    },
+    "map": {
+      "space_delete": {
+        "char": "",
+        "name": "EMPTY CHARACTER"
+      },
+      "space_keep": {
+        "char": "\u200D",
+        "name": "ZERO WIDTH JOINER"
+      },
+      "space_normal": {
+        "char": " ",
+        "name": "SPACE"
+      }
+    },
+    "others": [
+      {
+        "char": "\u200D",
+        "name": "ZERO WIDTH JOINER"
+      }
+    ]
+  }
+]
