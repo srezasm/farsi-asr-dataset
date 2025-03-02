@@ -9,7 +9,7 @@ class SingletonLogger:
         if cls._instance is None:
             # Create and configure the logger
             logger = logging.getLogger("AppLogger")
-            logger.setLevel(logging.INFO)
+            logger.setLevel(logging.WARNING)
 
             # Define handlers
             file_handler = logging.FileHandler('app.log')
