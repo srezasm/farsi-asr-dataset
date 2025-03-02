@@ -102,12 +102,13 @@ class AudioChunker:
         given file.
         """
         cmd = [
-            'ffmpeg',
-            '-y',
-            '-ss', str(start),
-            '-i', audio_file,
-            '-t', str(end - start),
-            '-c', 'copy',
+            "ffmpeg",
+            "-y",
+            "-ss", str(start),
+            "-i", audio_file,
+            "-t", str(end - start),
+            "-c:a", "libmp3lame",
+            "-b:a", "64k",
             output_file
         ]
         subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
