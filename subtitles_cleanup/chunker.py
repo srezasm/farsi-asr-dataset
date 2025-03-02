@@ -151,7 +151,7 @@ class AudioChunker:
             )
 
             for i, cap in enumerate(captions):
-                filename = f'{os.path.basename(audio_file).split(".")[0]}_{i+1:04d}.opus'
+                filename = f'{os.path.basename(audio_file).split(".")[0]}_{i+1:04d}.mp3'
 
                 self._slice_audio(
                     audio_file,
