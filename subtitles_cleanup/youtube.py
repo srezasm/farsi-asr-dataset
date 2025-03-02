@@ -1,218 +1,163 @@
-import os
 import tarfile
 import shutil
 from huggingface_hub import HfApi
 import webvtt
 from os.path import join, basename, isdir, relpath
+from os import makedirs, listdir, remove
+from itertools import groupby
 
 from chunker import AudioChunker, Caption
 from db import create_chunks, init_db, get_db_session, chunk_exists
 from utils import SingletonLogger
 
-# Set up logging
 logger = SingletonLogger().get_logger()
 
 hf_api = HfApi()
+repo_id = 'farsi-asr/farsi-asr-dataset'
+target_repo_id = 'farsi-asr/farsi-youtube-asr-dataset'
+tmp_dir = 'tmp'
 
-class FilesIterator:
-    def __init__(self):
-        self.repo_id = 'farsi-asr/farsi-asr-dataset'
-        self.target_repo_id = 'farsi-asr/farsi-youtube-asr-dataset'
-        self.tar_files = self._get_tar_files()
+def get_captions(sub_path):
+    def format_time(t):
+        return t.hours * 3600 + t.minutes * 60 + t.seconds + t.milliseconds / 1000
     
-    def _get_tar_files(self):
-        try:
-            tar_files = hf_api.list_repo_files(self.repo_id, repo_type='dataset')
-            tar_files = [f for f in tar_files if f.startswith('youtube') and f.endswith('.tar.gz')]
-            logger.info(f"Found {len(tar_files)} tar.gz files in repository {self.repo_id}.")
-            return tar_files
-        except Exception as e:
-            logger.error(f"Error listing repository files: {e}")
-            return []
-    
-    def _get_files(self):
-        # Base temporary directory for extraction
-        tmp_dir = '/content/tmp'
-
-        for tar_file in self.tar_files:
-            logger.info(f"Processing tar file: {tar_file}")
-
-            # Create temporary directory
-            os.makedirs(tmp_dir, exist_ok=True)
-            
-            try:
-                # Download the tar file
-                tar_path = hf_api.hf_hub_download(
-                    self.repo_id, tar_file, repo_type='dataset', local_dir=tmp_dir
-                )
-                logger.info(f"Downloaded {tar_file} to {tar_path}")
-            except Exception as e:
-                logger.error(f"Error downloading {tar_file}: {e}")
-                shutil.rmtree(tmp_dir, ignore_errors=True)
-                continue
-
-            try:
-                # Extract the tar file into tmp_dir
-                with tarfile.open(tar_path, 'r:gz') as tar:
-                    tar.extractall(tmp_dir)
-                logger.info(f"Extracted {tar_file} into {tmp_dir}")
-            except Exception as e:
-                logger.error(f"Error extracting {tar_file}: {e}")
-                shutil.rmtree(tmp_dir, ignore_errors=True)
-                continue
-
-            # Determine the expected directory (using the first part of tar_file's name)
-            chl_id = '_'.join(basename(tar_file).split('_')[:-1])
-            extracted_dir = join(tmp_dir, chl_id)
-            if not isdir(extracted_dir):
-                logger.warning(f"Expected directory {extracted_dir} not found. Skipping {tar_file}.")
-                shutil.rmtree(tmp_dir, ignore_errors=True)
-                continue
-
-            found_files = False
-            # Walk through the extracted directory to find .vtt and .opus files
-            for root, _, files in os.walk(extracted_dir):
-                sub_files = [join(root, f) for f in files if f.endswith('.vtt')]
-                audio_files = [join(root, f) for f in files if f.endswith('.opus')]
-                
-                if not sub_files or not audio_files:
-                    missing = []
-                    if not sub_files:
-                        missing.append("subtitles (.vtt)")
-                    if not audio_files:
-                        missing.append("audio (.opus)")
-                    logger.warning(f"Missing {', '.join(missing)} in {root}. Skipping this directory.")
-                    continue
-                
-                found_files = True
-                yield sub_files[0], audio_files[0], chl_id
-
-            if not found_files:
-                logger.warning(f"No valid file pairs found in {extracted_dir} for {tar_file}.")
-
-            # Archive the processed files and upload to the target repository
-            output_dir = join(os.getcwd(), chl_id)
-            if isdir(output_dir):
-                try:
-                    archive_path = basename(tar_path)
-                    with tarfile.open(archive_path, 'w:gz') as tar_archive:
-                        for root, _, files in os.walk(output_dir):
-                            for f in files:
-                                file_path = join(root, f)
-                                arcname = relpath(file_path, os.getcwd())
-                                tar_archive.add(file_path, arcname=arcname)
-                    logger.info(f"Created archive {archive_path} from {output_dir}")
-
-                    hf_api.upload_file(
-                            path_or_fileobj=archive_path,
-                            path_in_repo=basename(archive_path),
-                            repo_id=self.target_repo_id,
-                            repo_type='dataset'
-                        )
-                    logger.info(f"Uploaded archive {archive_path} to repository {self.target_repo_id}")
-
-                    # Remove the output directory after archiving
-                    shutil.rmtree(output_dir, ignore_errors=True)
-                    os.remove(archive_path)
-                except Exception as e:
-                    logger.error(f"Error archiving/uploading processed files from {output_dir}: {e}")
-            else:
-                logger.info(f"No output directory {output_dir} found to archive for {tar_file}.")
-            
-            # Clean up the temporary extraction directory
-            try:
-                shutil.rmtree(tmp_dir, ignore_errors=True)
-                logger.info(f"Cleaned up temporary directory {tmp_dir}")
-            except Exception as e:
-                logger.error(f"Error cleaning up temporary directory {tmp_dir}: {e}")
-            finally:
-                yield None, None, None
-
-    def __iter__(self):
-        return self._get_files()
-
-
-def get_captions(sub_filepath):
-    captions = []
     try:
-        vtt_captions = webvtt.read(sub_filepath)
+        sub = webvtt.read(sub_path)
     except Exception as e:
-        logger.error(f"Error reading subtitles from {sub_filepath}: {e}")
+        logger.error(f"Error reading subtitles from {sub_path}: {e}")
         return []
 
-    def time_to_seconds(time_str):
-        try:
-            h, m, s = time_str.split(':')
-            return int(h) * 3600 + int(m) * 60 + float(s)
-        except Exception as e:
-            logger.error(f"Error converting time string '{time_str}': {e}")
-            return 0
-
-    for caption in vtt_captions:
-        try:
-            start_time = time_to_seconds(caption.start)
-            end_time = time_to_seconds(caption.end)
-            captions.append(
-                Caption(
-                    start=start_time,
-                    end=end_time,
-                    text=caption.text.strip()
-                )
+    captions = []
+    for caption in sub.iter_slice():
+        start_time = format_time(caption.start_time)
+        end_time = format_time(caption.end_time)
+        captions.append(
+            Caption(
+                start=start_time,
+                end=end_time,
+                text=caption.text.strip()
             )
-        except Exception as e:
-            logger.error(f"Error processing caption in {sub_filepath}: {e}")
-            continue
+        )
 
     return captions
 
+def get_channel_id(tar_file):
+    return basename(tar_file)[:24]
 
-if __name__ == "__main__":
-    logger.info("Initializing database...")
-    init_db()
+def download_tar_file(tar_files):
+    for tar_file in tar_files:
+        try:
+            tar_path = hf_api.hf_hub_download(
+                repo_id, tar_file, repo_type='dataset', local_dir=tmp_dir
+            )
+            logger.info(f"Downloaded {tar_file}")
+        except Exception as e:
+            logger.error(f"Error downloading {tar_file}: {e}")
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+        
+        try:
+            with tarfile.open(tar_path, 'r:gz') as tar:
+                tar.extractall(tmp_dir)
+            logger.info(f"Extracted {tar_file} into {tmp_dir}")
+        except Exception as e:
+            logger.error(f"Error extracting {tar_file}: {e}")
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            continue
+
+    return get_channel_id(tar_files[0])
+
+if __name__ == '__main__':
+    # check if db exists in target repo
+    if 'data.db' not in hf_api.list_repo_files(target_repo_id, repo_type='dataset'):
+        logger.info("Initializing database...")
+        init_db()
+    else:
+        hf_api.hf_hub_download(
+            target_repo_id, 'data.db', repo_type='dataset', local_dir='.'
+        )
+        logger.info("Downloaded database")
 
     chunker = AudioChunker()
-    video_iter = FilesIterator()
 
-    with get_db_session() as session:
-        for sub_filepath, audio_filepath, chl_id in video_iter:
-            try:
-                if not sub_filepath and not audio_filepath:
-                    hf_api.upload_file(
-                        path_or_fileobj='/content/data.db',
-                        path_in_repo='data.db',
-                        repo_id='farsi-asr/farsi-youtube-asr-dataset',
-                        repo_type='dataset'
-                    )
+    # Get youtube tar files from repo
+    tar_files = hf_api.list_repo_files(repo_id, repo_type='dataset')
+    tar_files = [f for f in tar_files if f.startswith('youtube') and f.endswith('.tar.gz')]
+    logger.info(f"Found {len(tar_files)} tar.gz files in repository {repo_id}.")
+    tar_files = [list(group) for _, group in groupby(sorted(tar_files), key=get_channel_id)]
 
-                vid_id = basename(sub_filepath).split('.')[0]
-                logger.info(f"Processing video ID: {vid_id}")
+    for channel_tar_files in tar_files:
+        makedirs(tmp_dir, exist_ok=True)
 
+        # download and extract channel tar files
+        channel_id = download_tar_file(channel_tar_files)
+
+        # process channel videos
+        for vid_id in listdir(join(tmp_dir, channel_id)):
+            vid_files = listdir(join(tmp_dir, channel_id, vid_id))
+            
+            sub_file = [f for f in vid_files if f.endswith('.vtt')]
+            audio_file = [f for f in vid_files if f.endswith('.opus')]
+
+            if not sub_file or not audio_file:
+                logger.error(f"Missing subtitles or audio file for video {vid_id}")
+                continue
+
+            sub_path = join(tmp_dir, channel_id, vid_id, sub_file[0])
+            audio_path = join(tmp_dir, channel_id, vid_id, audio_file[0])
+
+            vid_id = basename(sub_path).split('.')[0]
+            logger.info(f"Processing video ID: {vid_id}")
+
+            with get_db_session() as session:
                 if chunk_exists(session, vid_id, 'youtube'):
                     logger.info(f"Video {vid_id} already processed. Skipping.")
                     continue
 
-                # Create an output directory for the chunked audio
-                output_dir = join(chl_id, vid_id)
-                os.makedirs(output_dir, exist_ok=True)
+            output_dir = join(channel_id, vid_id)
+            makedirs(output_dir, exist_ok=True)
 
-                captions = get_captions(sub_filepath)
-                if not captions:
-                    logger.warning(f"No captions extracted from {sub_filepath}. Skipping video {vid_id}.")
-                    continue
-
-                # Process audio chunking
-                processed_captions = chunker.chunk(
-                    merge=True,
-                    audio_file=audio_filepath,
-                    captions=captions,
-                    output_dir=output_dir
-                )
-                logger.info(f"Created {len(processed_captions)} audio chunks for video {vid_id}")
-
-                # Record processed chunks in the database
-                create_chunks(session, 'youtube', vid_id, processed_captions)
-            except Exception as e:
-                logger.error(f"Error processing video {sub_filepath}: {e}")
+            captions = get_captions(sub_path)
+            if not captions:
+                logger.warning(f"No captions extracted from {sub_path}.")
                 continue
 
-    logger.info("Processing complete.")
+            processed_captions = chunker.chunk(
+                merge=True,
+                audio_file=audio_path,
+                captions=captions,
+                output_dir=output_dir
+            )
+            logger.info(f"Created {len(processed_captions)} audio chunks for video {vid_id}")
+
+            with get_db_session() as session:
+                create_chunks(session, 'youtube', vid_id, processed_captions)
+            logger.info(f"Recorded processed chunks in the database for video {vid_id}")
+
+        if not isdir(channel_id):
+            logger.info(f"No chunks created for channel {channel_id}. Skipping.")
+            continue
+        
+        # create archive and upload to target repo
+        archive_path = shutil.make_archive(channel_id, 'gztar', root_dir='.', base_dir=channel_id)
+        logger.info(f"Created archive {archive_path}")
+
+        hf_api.upload_file(
+            path_or_fileobj=archive_path,
+            path_in_repo=basename(archive_path),
+            repo_id=target_repo_id,
+            repo_type='dataset'
+        )
+        logger.info(f"Uploaded archive {archive_path}")
+
+        hf_api.upload_file(
+            path_or_fileobj='data.db',
+            path_in_repo='data.db',
+            repo_id=target_repo_id,
+            repo_type='dataset'
+        )
+        logger.info("Uploaded database")
+
+        # cleanup
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        shutil.rmtree(channel_id, ignore_errors=True)
+        remove(archive_path)

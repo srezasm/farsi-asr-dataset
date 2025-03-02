@@ -102,13 +102,12 @@ class AudioChunker:
         given file.
         """
         cmd = [
-            "ffmpeg",
-            "-y",
-            "-ss", str(start),
-            "-i", audio_file,
-            "-t", str(end - start),
-            "-c:a", "libmp3lame",
-            "-b:a", "64k",
+            'ffmpeg',
+            '-y',
+            '-ss', str(start),
+            '-i', audio_file,
+            '-t', str(end - start),
+            '-c', 'copy',
             output_file
         ]
         subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -151,7 +150,7 @@ class AudioChunker:
             )
 
             for i, cap in enumerate(captions):
-                filename = f'{os.path.basename(audio_file).split(".")[0]}_{i+1:04d}.mp3'
+                filename = f'{os.path.basename(audio_file).split(".")[0]}_{i+1:04d}.opus'
 
                 self._slice_audio(
                     audio_file,
