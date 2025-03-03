@@ -5,6 +5,7 @@ import webvtt
 from os.path import join, basename, isdir, relpath
 from os import makedirs, listdir, remove
 from itertools import groupby
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from chunker import AudioChunker, Caption
 from db import create_chunks, init_db, get_db_session, chunk_exists
@@ -44,12 +45,21 @@ def get_captions(sub_path):
 def get_channel_id(tar_file):
     return basename(tar_file)[:24]
 
-def download_tar_file(tar_files):
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+def _download_tar_file(tar_file):
+    return hf_api.hf_hub_download(
+        repo_id, tar_file, repo_type='dataset', local_dir=tmp_dir
+    )
+
+def download_and_extract_tar_file(tar_files):
+    channel_id = get_channel_id(tar_files[0])
+
+    if f'{channel_id}.tar.gz' in hf_api.list_repo_files(target_repo_id, repo_type='dataset'):
+        return None
+
     for tar_file in tar_files:
         try:
-            tar_path = hf_api.hf_hub_download(
-                repo_id, tar_file, repo_type='dataset', local_dir=tmp_dir
-            )
+            tar_path = _download_tar_file(tar_file)
             logger.info(f"Downloaded {tar_file}")
         except Exception as e:
             logger.error(f"Error downloading {tar_file}: {e}")
@@ -64,7 +74,27 @@ def download_tar_file(tar_files):
             shutil.rmtree(tmp_dir, ignore_errors=True)
             continue
 
-    return get_channel_id(tar_files[0])
+    return channel_id
+
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+def upload_archive(archive_path):
+    hf_api.upload_file(
+        path_or_fileobj=archive_path,
+        path_in_repo=basename(archive_path),
+        repo_id=target_repo_id,
+        repo_type='dataset'
+    )
+    logger.info(f"Uploaded archive {archive_path}")
+
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+def upload_db():
+    hf_api.upload_file(
+        path_or_fileobj='data.db',
+        path_in_repo='data.db',
+        repo_id=target_repo_id,
+        repo_type='dataset'
+    )
+    logger.info("Uploaded database")
 
 if __name__ == '__main__':
     # check if db exists in target repo
@@ -89,7 +119,10 @@ if __name__ == '__main__':
         makedirs(tmp_dir, exist_ok=True)
 
         # download and extract channel tar files
-        channel_id = download_tar_file(channel_tar_files)
+        channel_id = download_and_extract_tar_file(channel_tar_files)
+        if not channel_id:
+            logger.info(f'Already processed {channel_id}. Skipping.')
+            continue
 
         # process channel videos
         for vid_id in listdir(join(tmp_dir, channel_id)):
@@ -134,28 +167,17 @@ if __name__ == '__main__':
             logger.info(f"Recorded processed chunks in the database for video {vid_id}")
 
         if not isdir(channel_id):
-            logger.info(f"No chunks created for channel {channel_id}. Skipping.")
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            logger.warning(f"No chunks created for channel {channel_id}. Skipping.")
             continue
         
         # create archive and upload to target repo
         archive_path = shutil.make_archive(channel_id, 'gztar', root_dir='.', base_dir=channel_id)
         logger.info(f"Created archive {archive_path}")
 
-        hf_api.upload_file(
-            path_or_fileobj=archive_path,
-            path_in_repo=basename(archive_path),
-            repo_id=target_repo_id,
-            repo_type='dataset'
-        )
-        logger.info(f"Uploaded archive {archive_path}")
+        upload_archive(archive_path)
 
-        hf_api.upload_file(
-            path_or_fileobj='data.db',
-            path_in_repo='data.db',
-            repo_id=target_repo_id,
-            repo_type='dataset'
-        )
-        logger.info("Uploaded database")
+        upload_db()
 
         # cleanup
         shutil.rmtree(tmp_dir, ignore_errors=True)
