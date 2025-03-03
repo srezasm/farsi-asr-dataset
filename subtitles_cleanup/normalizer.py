@@ -13,7 +13,6 @@ class ValidationStatus(Enum):
     EMPTY_TEXT = 1
     INVALID_CHARS = 2
     DIALOGUE = 3
-    INVALID_START_END = 4
 
 
 class Response:
