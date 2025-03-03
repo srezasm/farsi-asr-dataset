@@ -17,6 +17,9 @@ class Caption:
 
     def copy(self) -> 'Caption':
         return Caption(**self.__dict__)
+    
+    def copy_with(self, **kwargs) -> 'Caption':
+        return Caption(**{**self.__dict__, **kwargs})
 
 
 class AudioChunker:
