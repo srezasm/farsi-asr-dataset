@@ -72,11 +72,12 @@ def _download_tar_file(tar_file):
         repo_id, tar_file, repo_type='dataset', local_dir=tmp_dir
     )
 
+list_repo_files = hf_api.list_repo_files(target_repo_id, repo_type='dataset')
 def download_and_extract_tar_file(tar_file: str):
-    artist_id = basename(tar_file).replace('.tar.gz', '')
-
-    if tar_file in hf_api.list_repo_files(target_repo_id, repo_type='dataset'):
+    if basename(tar_file) in list_repo_files:
         return None
+
+    artist_id = basename(tar_file).replace('.tar.gz', '')
 
     try:
         tar_path = _download_tar_file(tar_file)
