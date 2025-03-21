@@ -99,27 +99,65 @@ class AudioChunker:
 
         return adjusted
 
-    def _slice_audio(self, audio_file: str, start: float, end: float, output_file: str):
+    def _slice_audio(self, audio_file: str, start: float, end: float, output_file: str) -> Optional[str]:
         """
         Slices the audio file from start to end and converts it to MP3 format with
         48.0 kHz sample rate and 64.0 kb/s constant bit rate, writing the output to
-        the given file.
+        the given file. Returns the output file path on success, None on failure.
+
+        Args:
+            audio_file (str): Path to the input audio file.
+            start (float): Start time in seconds.
+            end (float): End time in seconds.
+            output_file (str): Path to the output MP3 file.
+
+        Returns:
+            Optional[str]: Path to the output file if successful, None if failed.
         """
+        # FFmpeg command
         cmd = [
             'ffmpeg',
-            '-y',                               # Overwrite output file if it exists
-            '-hwaccel', 'cuda',                 # Use CUDA for hardware acceleration (input option)
-            '-ss', str(start),                  # Start time in seconds (input option)
-            '-i', audio_file,                   # Input file
-            '-t', str(end - start),             # Duration in seconds (output option)
-            '-c:a', 'mp3',                      # Audio codec: MP3 (output option)
-            '-ar', '48000',                     # Sample rate: 48.0 kHz (output option)
-            '-b:a', '64k',                      # Bit rate: 64.0 kb/s (output option)
-            '-ac', '1',                         # Audio channels: 1 (mono) (output option)
+            '-y',                           # Overwrite output file if it exists
+            '-ss', str(start),             # Start time in seconds (input option)
+            '-i', audio_file,              # Input file
+            '-t', str(end - start),        # Duration in seconds (output option)
+            '-c:a', 'mp3',                 # Audio codec: MP3 (output option)
+            '-ar', '48000',                # Sample rate: 48.0 kHz (output option)
+            '-b:a', '64k',                 # Bit rate: 64.0 kb/s (output option)
+            '-ac', '1',                    # Audio channels: 1 (mono) (output option)
+            '-map', '0:a',                 # Map only audio streams from input
             output_file
         ]
-        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
+        try:
+            # Run FFmpeg and capture output
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,  # Return strings instead of bytes
+                check=False  # Don't raise an exception on non-zero exit code
+            )
+
+            # Check if FFmpeg succeeded
+            if result.returncode != 0:
+                logger.error(f"FFmpeg failed with return code {result.returncode}: {result.stderr}")
+                return None
+
+            # Verify output file exists and has content
+            if not os.path.isfile(output_file) or os.path.getsize(output_file) == 0:
+                logger.error(f"Output file missing or empty: {output_file}")
+                return None
+
+            return output_file
+
+        except subprocess.SubprocessError as e:
+            logger.error(f"Subprocess error while running FFmpeg: {str(e)}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error: {str(e)}")
+            return None
+    
     def _get_audio_duration(self, audio_file: str) -> float:
         """
         Returns the duration of the audio file in seconds.
