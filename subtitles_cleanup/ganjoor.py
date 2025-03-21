@@ -48,7 +48,7 @@ def get_captions(sub_path):
             captions.append(
                 Caption(
                     start=caption['start'],
-                    end=caption['endTime'],
+                    end=str(int(caption['endTime']) / 1000),
                     text=caption['text']
                 )
             )
@@ -167,7 +167,6 @@ if __name__ == '__main__':
 
             captions = get_captions(sub_path)
             if not captions:
-                logger.warning(f"No captions extracted from {sub_path}.")
                 continue
 
             processed_captions = chunker.chunk(
