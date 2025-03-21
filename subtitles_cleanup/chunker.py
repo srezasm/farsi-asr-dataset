@@ -101,16 +101,21 @@ class AudioChunker:
 
     def _slice_audio(self, audio_file: str, start: float, end: float, output_file: str):
         """
-        Slices the audio file from start to end and writes the output to the
-        given file.
+        Slices the audio file from start to end and converts it to MP3 format with
+        48.0 kHz sample rate and 64.0 kb/s constant bit rate, writing the output to
+        the given file.
         """
         cmd = [
             'ffmpeg',
-            '-y',
-            '-ss', str(start),
-            '-i', audio_file,
-            '-t', str(end - start),
-            '-c', 'copy',
+            '-y',                               # Overwrite output file if it exists
+            '-hwaccel', 'cuda',                 # Use CUDA for hardware acceleration (input option)
+            '-ss', str(start),                  # Start time in seconds (input option)
+            '-i', audio_file,                   # Input file
+            '-t', str(end - start),             # Duration in seconds (output option)
+            '-c:a', 'mp3',                      # Audio codec: MP3 (output option)
+            '-ar', '48000',                     # Sample rate: 48.0 kHz (output option)
+            '-b:a', '64k',                      # Bit rate: 64.0 kb/s (output option)
+            '-ac', '1',                         # Audio channels: 1 (mono) (output option)
             output_file
         ]
         subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
