@@ -48,7 +48,7 @@ def get_captions(sub_path):
             captions.append(
                 Caption(
                     start=caption['start'],
-                    end=str(int(caption['endTime']) / 1000),
+                    end=int(caption['endTime']) / 1000,
                     text=caption['text']
                 )
             )
@@ -67,28 +67,23 @@ def get_captions(sub_path):
 
     return captions
 
-@retry(stop=stop_after_attempt(3), wait=wait_fixed(1800))
-def upload_archive(archive_path):
-    hf_api.upload_file(
-        path_or_fileobj=archive_path,
-        path_in_repo=basename(archive_path),
+@retry(stop=stop_after_attempt(10), wait=wait_fixed(600))
+def upload_results(archive_path):
+    makedirs('upload', exist_ok=True)
+
+    shutil.copy('data.db', join('upload', 'data.db'))
+    shutil.move(archive_path, join('upload', basename(archive_path)))
+
+    hf_api.upload_folder(
         repo_id=target_repo_id,
+        folder_path='upload',
         repo_type='dataset'
     )
-    logger.info(f"Uploaded archive {archive_path}")
+    logger.info(f"Uploaded archive and db files to target repo")
 
+    shutil.rmtree('upload', ignore_errors=True)
 
-@retry(stop=stop_after_attempt(3), wait=wait_fixed(1800))
-def upload_db():
-    hf_api.upload_file(
-        path_or_fileobj='data.db',
-        path_in_repo='data.db',
-        repo_id=target_repo_id,
-        repo_type='dataset'
-    )
-    logger.info("Uploaded database")
-
-@retry(stop=stop_after_attempt(3), wait=wait_fixed(1800))
+@retry(stop=stop_after_attempt(10), wait=wait_fixed(600))
 def _download_tar_file(tar_file):
     return hf_api.hf_hub_download(
         repo_id, tar_file, repo_type='dataset', local_dir=tmp_dir
@@ -194,11 +189,8 @@ if __name__ == '__main__':
             artist_id, 'gztar', root_dir='.', base_dir=artist_id)
         logger.info(f"Created archive {archive_path}")
 
-        upload_archive(archive_path)
-
-        upload_db()
+        upload_results(archive_path)
 
         # cleanup
         shutil.rmtree(tmp_dir, ignore_errors=True)
         shutil.rmtree(artist_id, ignore_errors=True)
-        remove(archive_path)
