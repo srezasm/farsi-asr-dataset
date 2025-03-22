@@ -68,20 +68,13 @@ def get_captions(sub_path):
     return captions
 
 @retry(stop=stop_after_attempt(10), wait=wait_fixed(600))
-def upload_results(archive_path):
-    makedirs('upload', exist_ok=True)
-
-    shutil.copy('data.db', join('upload', 'data.db'))
-    shutil.move(archive_path, join('upload', basename(archive_path)))
-
+def upload_results():
     hf_api.upload_folder(
         repo_id=target_repo_id,
         folder_path='upload',
         repo_type='dataset'
     )
     logger.info(f"Uploaded archive and db files to target repo")
-
-    shutil.rmtree('upload', ignore_errors=True)
 
 @retry(stop=stop_after_attempt(10), wait=wait_fixed(600))
 def _download_tar_file(tar_file):
@@ -185,11 +178,15 @@ if __name__ == '__main__':
             continue
 
         # create archive and upload to target repo
-        archive_path = shutil.make_archive(
-            artist_id, 'gztar', root_dir='.', base_dir=artist_id)
+        archive_path = shutil.make_archive(artist_id, 'gztar', root_dir='.', base_dir=artist_id)
         logger.info(f"Created archive {archive_path}")
 
-        upload_results(archive_path)
+        makedirs('upload', exist_ok=True)
+        shutil.copy('data.db', join('upload', 'data.db'))
+        shutil.move(archive_path, join('upload', basename(archive_path)))
+        upload_results()
+        shutil.rmtree('upload', ignore_errors=True)
+
 
         # cleanup
         shutil.rmtree(tmp_dir, ignore_errors=True)
