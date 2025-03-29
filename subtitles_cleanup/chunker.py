@@ -117,7 +117,8 @@ class AudioChunker:
         # FFmpeg command
         cmd = [
             'ffmpeg',
-            '-y',                           # Overwrite output file if it exists
+            '-hwaccel', 'cuda',            # Use hardware acceleration (if available)
+            '-y',                          # Overwrite output file if it exists
             '-ss', str(start),             # Start time in seconds (input option)
             '-i', audio_file,              # Input file
             '-t', str(end - start),        # Duration in seconds (output option)
